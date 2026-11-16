@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FOUNDRY-9 — a three.js tactical FPS</title>
+<style>
+  :root {
+    --bg: #0a1418; --panel: #10222a; --line: #23414c; --ink: #e8e2d4;
+    --muted: #8fa8ad; --amber: #f5a623; --teal: #2ec4b6; --red: #e4572e;
+    --font-ui: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-read: ui-monospace, 'SF Mono', Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--ink); font-family: var(--font-ui); }
+  #game, #game canvas { position: fixed; inset: 0; display: block; }
+  #hud { position: fixed; inset: 0; pointer-events: none; }
+  #crosshair { position: fixed; left: 50%; top: 50%; width: 24px; height: 24px; transform: translate(-50%, -50%); }
+  #crosshair i { position: absolute; background: var(--ink); opacity: .9; }
+  #crosshair i:nth-child(1) { left: 11px; top: 0; width: 2px; height: 7px; }
+  #crosshair i:nth-child(2) { left: 11px; bottom: 0; width: 2px; height: 7px; }
+  #crosshair i:nth-child(3) { top: 11px; left: 0; height: 2px; width: 7px; }
+  #crosshair i:nth-child(4) { top: 11px; right: 0; height: 2px; width: 7px; }
+  #hitmarker { position: fixed; left: 50%; top: 50%; width: 28px; height: 28px; transform: translate(-50%, -50%) rotate(45deg); opacity: 0; transition: opacity 90ms linear; }
+  #hitmarker.on { opacity: 1; }
+  #hitmarker.kill i { background: var(--red); }
+  #hitmarker i { position: absolute; background: var(--amber); }
+  #hitmarker i:nth-child(1) { left: 13px; top: 0; width: 2px; height: 8px; }
+  #hitmarker i:nth-child(2) { left: 13px; bottom: 0; width: 2px; height: 8px; }
+  #hitmarker i:nth-child(3) { top: 13px; left: 0; height: 2px; width: 8px; }
+  #hitmarker i:nth-child(4) { top: 13px; right: 0; height: 2px; width: 8px; }
+  #health { position: fixed; left: 28px; bottom: 26px; width: 220px; }
+  #health .label, #money .label { font-size: 11px; letter-spacing: .14em; color: var(--muted); text-transform: uppercase; }
+  #health-num { font-family: var(--font-read); font-size: 34px; line-height: 1; }
+  #health-bar { height: 6px; background: var(--line); margin-top: 6px; }
+  #health-fill { height: 100%; background: var(--teal); width: 100%; }
+  #health.low #health-fill { background: var(--red); }
+  #ammo { position: fixed; right: 28px; bottom: 22px; text-align: right; font-family: var(--font-read); }
+  #ammo-mag { font-size: 52px; line-height: 1; }
+  #ammo-reserve { font-size: 15px; color: var(--muted); }
+  #ammo-name { font-size: 12px; color: var(--muted); letter-spacing: .1em; text-transform: uppercase; }
+  #ammo.empty #ammo-mag { color: var(--amber); }
+  #topbar { position: fixed; top: 18px; left: 50%; transform: translateX(-50%); display: flex; gap: 18px; align-items: baseline; font-family: var(--font-read); font-size: 15px; }
+  #topbar .pill { background: rgba(16,34,42,.8); border: 1px solid var(--line); padding: 6px 12px; }
+  #timer.warn { color: var(--red); }
+  #money { position: fixed; left: 28px; top: 20px; font-family: var(--font-read); }
+  #money-num { font-size: 22px; color: var(--amber); }
+  #objective { position: fixed; left: 28px; top: 74px; font-size: 13px; color: var(--muted); max-width: 260px; line-height: 1.5; }
+  #objective b { color: var(--amber); }
+  #feed { position: fixed; right: 28px; top: 20px; text-align: right; font-size: 13px; color: var(--muted); line-height: 1.7; }
+  #feed b { color: var(--ink); }
+  #plantbar { position: fixed; left: 50%; top: 62%; transform: translateX(-50%); width: 240px; text-align: center; display: none; }
+  #plantbar .label { font-size: 12px; letter-spacing: .12em; color: var(--amber); text-transform: uppercase; margin-bottom: 6px; }
+  #plantbar .track { height: 6px; background: var(--line); }
+  #plantbar .fill { height: 100%; background: var(--amber); width: 0%; }
+  #banner { position: fixed; left: 50%; top: 34%; transform: translate(-50%, -50%); text-align: center; display: none; }
+  #banner h2 { margin: 0; font-size: 52px; letter-spacing: .06em; }
+  #banner.win h2 { color: var(--teal); }
+  #banner.lose h2 { color: var(--red); }
+  #banner p { margin: 8px 0 0; font-size: 16px; color: var(--muted); }
+  .overlay { position: fixed; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(10,20,24,.88); }
+  .overlay[hidden] { display: none; }
+  .panel { width: min(560px, 100%); padding: 32px; background: var(--panel); border: 1px solid var(--line); }
+  .panel h1 { margin: 0 0 6px; font-size: 34px; letter-spacing: .02em; }
+  .panel h1 span { color: var(--amber); }
+  .panel p { margin: 0 0 20px; font-size: 15px; line-height: 1.55; color: var(--muted); }
+  .panel .big { font: inherit; font-weight: 600; padding: 12px 20px; border: 1px solid var(--amber); background: var(--amber); color: var(--bg); cursor: pointer; }
+  .panel .big:hover { background: var(--ink); border-color: var(--ink); }
+  .keys { margin: 22px 0 0; padding: 0; list-style: none; display: grid; gap: 7px; font-size: 13px; color: var(--muted); }
+  .keys kbd { padding: 2px 7px; border: 1px solid var(--line); font-family: var(--font-read); font-size: 12px; color: var(--ink); }
+  .shop { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0 0 18px; }
+  .item { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); background: var(--bg); cursor: pointer; font-size: 14px; }
+  .item:hover { border-color: var(--amber); }
+  .item.owned { border-color: var(--teal); color: var(--teal); }
+  .item.poor { opacity: .45; cursor: not-allowed; }
+  .item .price { font-family: var(--font-read); color: var(--amber); }
+  .item .key { font-family: var(--font-read); color: var(--muted); font-size: 12px; margin-right: 6px; }
+  #buy-money { font-family: var(--font-read); color: var(--amber); font-size: 18px; margin-bottom: 14px; }
+  #hint { position: fixed; left: 50%; bottom: 110px; transform: translateX(-50%); font-size: 13px; color: var(--muted); background: rgba(16,34,42,.8); padding: 6px 12px; border: 1px solid var(--line); display: none; }
+</style>
+</head>
+<body>
+<div id="game"></div>
+
+<div id="hud" aria-hidden="true">
+  <div id="crosshair"><i></i><i></i><i></i><i></i></div>
+  <div id="hitmarker"><i></i><i></i><i></i><i></i></div>
+  <div id="topbar">
+    <span class="pill">ROUND <b id="round-num">1</b>/8</span>
+    <span class="pill" id="timer">1:40</span>
+    <span class="pill">SCORE <b id="score">0 – 0</b></span>
+  </div>
+  <div id="money"><div class="label">Credits</div><div id="money-num">$800</div></div>
+  <div id="objective">Objective: plant the <b>charge</b> at Site A (north furnace hall) or eliminate all hostiles.</div>
+  <div id="feed"></div>
+  <div id="health"><div class="label">Integrity</div><div id="health-num">100</div><div id="health-bar"><div id="health-fill"></div></div></div>
+  <div id="ammo"><div id="ammo-name">PISTOL</div><div><span id="ammo-mag">12</span><span id="ammo-reserve"> / 36</span></div></div>
+  <div id="plantbar"><div class="label" id="plant-label">Planting charge…</div><div class="track"><div class="fill" id="plant-fill"></div></div></div>
+  <div id="banner"><h2 id="banner-title"></h2><p id="banner-sub"></p></div>
+  <div id="hint"></div>
+</div>
+
+<div id="overlay-menu" class="overlay">
+  <section class="panel">
+    <h1>FOUNDRY<span>-9</span></h1>
+    <p>An abandoned smelter, one charge, five hostiles on patrol. Plant the charge at Site A or clear the floor — then do it again, one round harder. Stopping to aim beats spraying on the move.</p>
+    <button id="play" class="big" type="button">Deploy — click to play</button>
+    <ul class="keys">
+      <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Move &nbsp; <kbd>Mouse</kbd> Look &nbsp; <kbd>Click</kbd> Fire &nbsp; <kbd>R</kbd> Reload</li>
+      <li><kbd>Ctrl</kbd> Crouch &nbsp; <kbd>Shift</kbd> Walk (steady aim) &nbsp; <kbd>E</kbd> Plant / defuse &nbsp; <kbd>1–4</kbd> Weapons &nbsp; <kbd>5</kbd> Frag &nbsp; <kbd>6</kbd> Flash &nbsp; <kbd>B</kbd> Buy menu</li>
+    </ul>
+  </section>
+</div>
+
+<div id="overlay-buy" class="overlay" hidden>
+  <section class="panel">
+    <h1>Buy phase — Round <span id="buy-round">1</span></h1>
+    <p>Spend round earnings on hardware. Click an item or press its key, then deploy.</p>
+    <div id="buy-money">$800</div>
+    <div class="shop" id="shop"></div>
+    <button id="deploy" class="big" type="button">Deploy (Enter)</button>
+  </section>
+</div>
+
+<div id="overlay-end" class="overlay" hidden>
+  <section class="panel">
+    <h1 id="end-title">Match over</h1>
+    <p id="end-copy"></p>
+    <button id="restart" class="big" type="button">Play again</button>
+  </section>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/three.module.min.js" } }
+</script>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
